@@ -118,6 +118,7 @@ namespace RefreshTaskbarApp
             // 1. Refresh Taskbar (Primary Action)
             _itemRefresh = new ToolStripMenuItem("Refresh Taskbar");
             _itemRefresh.Font = new Font("Segoe UI", 9.0f, FontStyle.Bold);
+            _itemRefresh.ForeColor = Color.FromArgb(17, 17, 17);
             _itemRefresh.Click += delegate(object sender, EventArgs e)
             {
                 ForceRefresh();
@@ -137,6 +138,7 @@ namespace RefreshTaskbarApp
 
             // 3. Close
             _itemClose = new ToolStripMenuItem("Close");
+            _itemClose.ForeColor = Color.FromArgb(17, 17, 17);
             _itemClose.Click += delegate(object sender, EventArgs e)
             {
                 ExitApp();
@@ -195,12 +197,12 @@ namespace RefreshTaskbarApp
             if (enabled)
             {
                 _itemStartup.Text = "Open on startup    [ON]";
-                _itemStartup.ForeColor = Color.FromArgb(240, 240, 240);
+                _itemStartup.ForeColor = Color.FromArgb(17, 17, 17);
             }
             else
             {
                 _itemStartup.Text = "Open on startup    [OFF]";
-                _itemStartup.ForeColor = Color.FromArgb(170, 170, 170);
+                _itemStartup.ForeColor = Color.FromArgb(107, 114, 128);
             }
         }
 
@@ -209,7 +211,6 @@ namespace RefreshTaskbarApp
             if (_notifyIcon == null) return;
             bool startup = IsStartupEnabled();
             string status = startup ? "Startup: ON" : "Startup: OFF";
-            // Keep well under 63 character limit for NotifyIcon.Text
             _notifyIcon.Text = string.Format("Refresh Taskbar\nClick to refresh | {0}", status);
         }
 
@@ -387,19 +388,19 @@ namespace RefreshTaskbarApp
 
     internal class ModernMenuRenderer : ToolStripProfessionalRenderer
     {
-        public ModernMenuRenderer() : base(new ModernColorTable()) { }
+        public ModernMenuRenderer() : base(new LightColorTable()) { }
 
         protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
         {
-            e.TextColor = e.Item.Selected ? Color.White : e.TextColor;
+            e.TextColor = e.Item.Selected ? Color.Black : (e.Item.ForeColor.IsEmpty ? Color.FromArgb(17, 17, 17) : e.Item.ForeColor);
             base.OnRenderItemText(e);
         }
 
         protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs e)
         {
             Rectangle r = new Rectangle(e.ImageRectangle.X + 2, e.ImageRectangle.Y + 2, 14, 14);
-            using (SolidBrush b = new SolidBrush(Color.FromArgb(0, 229, 255))) // Electric Cyan
-            using (Pen p = new Pen(Color.FromArgb(24, 24, 24), 2.0f))
+            using (SolidBrush b = new SolidBrush(Color.FromArgb(17, 17, 17))) // Pure black badge
+            using (Pen p = new Pen(Color.White, 2.0f))                         // Pure white checkmark tick
             {
                 e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
                 e.Graphics.FillEllipse(b, r);
@@ -412,21 +413,32 @@ namespace RefreshTaskbarApp
                 e.Graphics.DrawLines(p, checkPoints);
             }
         }
+
+        protected override void OnRenderSeparator(ToolStripSeparatorRenderEventArgs e)
+        {
+            int y = e.Item.Height / 2;
+            using (Pen p = new Pen(Color.FromArgb(229, 231, 235), 1.0f))
+            {
+                e.Graphics.DrawLine(p, 8, y, e.Item.Width - 8, y);
+            }
+        }
     }
 
-    internal class ModernColorTable : ProfessionalColorTable
+    internal class LightColorTable : ProfessionalColorTable
     {
-        public override Color ToolStripDropDownBackground { get { return Color.FromArgb(28, 28, 28); } }
-        public override Color MenuBorder { get { return Color.FromArgb(48, 48, 48); } }
+        public override Color ToolStripDropDownBackground { get { return Color.White; } }
+        public override Color MenuBorder { get { return Color.FromArgb(209, 213, 219); } }
         public override Color MenuItemBorder { get { return Color.Transparent; } }
-        public override Color MenuItemSelected { get { return Color.FromArgb(46, 46, 46); } }
+        public override Color MenuItemSelected { get { return Color.FromArgb(243, 244, 246); } }
+        public override Color MenuItemSelectedGradientBegin { get { return Color.FromArgb(243, 244, 246); } }
+        public override Color MenuItemSelectedGradientEnd { get { return Color.FromArgb(243, 244, 246); } }
         public override Color CheckBackground { get { return Color.Transparent; } }
         public override Color CheckSelectedBackground { get { return Color.Transparent; } }
-        public override Color ImageMarginGradientBegin { get { return Color.FromArgb(28, 28, 28); } }
-        public override Color ImageMarginGradientMiddle { get { return Color.FromArgb(28, 28, 28); } }
-        public override Color ImageMarginGradientEnd { get { return Color.FromArgb(28, 28, 28); } }
-        public override Color SeparatorDark { get { return Color.FromArgb(48, 48, 48); } }
-        public override Color SeparatorLight { get { return Color.FromArgb(36, 36, 36); } }
+        public override Color ImageMarginGradientBegin { get { return Color.White; } }
+        public override Color ImageMarginGradientMiddle { get { return Color.White; } }
+        public override Color ImageMarginGradientEnd { get { return Color.White; } }
+        public override Color SeparatorDark { get { return Color.FromArgb(229, 231, 235); } }
+        public override Color SeparatorLight { get { return Color.White; } }
     }
 
     internal class MessageWindow : NativeWindow
@@ -455,15 +467,24 @@ namespace RefreshTaskbarApp
         {
             if (m.Msg == WM_TASKBARCREATED && WM_TASKBARCREATED != 0)
             {
-                if (_onTaskbarCreated != null) _onTaskbarCreated();
+                if (_onTaskbarCreated != null)
+                {
+                    _onTaskbarCreated();
+                }
             }
             else if (m.Msg == _wmTriggerRefresh && _wmTriggerRefresh != 0)
             {
-                if (_onTriggerRefresh != null) _onTriggerRefresh();
+                if (_onTriggerRefresh != null)
+                {
+                    _onTriggerRefresh();
+                }
             }
             else if (m.Msg == _wmClose && _wmClose != 0)
             {
-                if (_onClose != null) _onClose();
+                if (_onClose != null)
+                {
+                    _onClose();
+                }
             }
 
             base.WndProc(ref m);
