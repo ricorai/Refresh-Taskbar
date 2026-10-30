@@ -269,7 +269,13 @@ namespace RefreshTaskbarApp
             try
             {
                 string dir = AppDomain.CurrentDomain.BaseDirectory;
-                string icoPath = Path.Combine(dir, "refresh.ico");
+                string icoPath = Path.Combine(dir, "assets", "refresh.ico");
+                if (File.Exists(icoPath))
+                {
+                    return new Icon(icoPath);
+                }
+
+                icoPath = Path.Combine(dir, "refresh.ico");
                 if (File.Exists(icoPath))
                 {
                     return new Icon(icoPath);

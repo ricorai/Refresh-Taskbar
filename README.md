@@ -10,8 +10,9 @@ A lightweight, zero-dependency native Windows C# system tray and desktop utility
 - **Silent & Windowless:** No console windows, popups, or jarring visual flashes.
 - **Desktop Context Menu Integration (Dynamic):**
   - Appears in your Windows Desktop right-click context menu **only while the app is running**.
-  - Cleanly self-unregisters and vanishes from the Desktop right-click menu whenever the app is closed.
-  - Can also be toggled directly from the tray context menu (`Desktop right-click menu [ON/OFF]`).
+  - Positioned cleanly below the native Refresh group.
+  - Automatically unregisters and vanishes from the Desktop right-click menu whenever the app is closed.
+  - Can be toggled on/off directly from the tray context menu (`Desktop right-click menu [ON/OFF]`).
 - **Strict Light Mode B&W Palette:**
   - Modern crisp white background (`#FFFFFF`) with pure high-contrast black text (`#111111`).
   - Solid black circular checkmark badge with crisp white tick (zero colors/cyan).
@@ -41,32 +42,20 @@ A lightweight, zero-dependency native Windows C# system tray and desktop utility
 
 ---
 
-## Compilation
-
-Builds using the native Windows C# compiler (`csc.exe`):
-
-```cmd
-build.bat
-```
-
-Or directly via command line:
-
-```cmd
-C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /optimize+ /platform:anycpu /win32icon:"refresh.ico" /r:System.dll,System.Windows.Forms.dll,System.Drawing.dll /out:"RefreshTaskbar.exe" "RefreshTaskbar.cs"
-```
-
----
-
-## File Structure
+## Directory Architecture
 
 ```text
 Refresh Taskbar/
-├── RefreshTaskbar.cs       # Native C# source (Tray context, Desktop menu IPC, ForceRefresh)
-├── RefreshTaskbar.exe      # ~33 KB compiled standalone Windows binary
-├── refresh.ico             # High-res monochrome icon (16x16 to 256x256)
-├── refresh.png             # 256x256 source PNG asset
-├── make_icon.py            # Python generator for the custom monochrome icon
-├── build.bat               # Fast single-click native compilation script
-├── Refresh Task Bar.bat    # Original legacy 6-line batch script
-└── README.md               # Project documentation
+├── assets/                 # How it looks (visual assets & icon generator)
+│   ├── refresh.ico         # High-res monochrome icon (16x16 to 256x256)
+│   ├── refresh.png         # 256x256 source PNG asset
+│   └── make_icon.py        # Python procedural generator for the custom icons
+├── src/                    # How it works (engine source code & build script)
+│   ├── RefreshTaskbar.cs   # Native C# source (Tray context, Desktop menu IPC, ForceRefresh)
+│   └── build.bat           # 1-click native compiler script (outputs to ../RefreshTaskbar.exe)
+├── history/                # History (legacy origin scripts & snapshots)
+│   └── Refresh Task Bar.bat# Original legacy 6-line batch script
+├── .gitignore              # Git ignore rules for build cache & temp files
+├── README.md               # Project documentation & architecture guide
+└── RefreshTaskbar.exe      # Standalone compiled 33 KB native Windows binary
 ```
