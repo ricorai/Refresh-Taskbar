@@ -1,0 +1,5 @@
+# Temporary & build artifacts
+*.tmp
+*.bak
+*.log
+__pycache__/
