@@ -383,7 +383,7 @@ namespace RefreshTaskbarApp
                         {
                             key.SetValue("", "Refresh Taskbar");
                             key.SetValue("Icon", Application.ExecutablePath);
-                            key.SetValue("Position", "Top");
+                            key.DeleteValue("Position", false);
 
                             using (RegistryKey cmdKey = key.CreateSubKey("command"))
                             {
@@ -600,3 +600,4 @@ namespace RefreshTaskbarApp
         }
     }
 }
+
