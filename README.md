@@ -8,10 +8,18 @@ A lightweight, zero-dependency native Windows C# system tray utility that instan
 
 - **Instant Force Refresh:** Terminates stalled `explorer.exe` processes and revives the shell cleanly in milliseconds.
 - **Silent & Windowless:** No console windows, popups, or jarring visual flashes.
+- **Windows 11 Dark Styled Menu:** Modern dark slate context menu renderer (`#1C1C1C` / `#2E2E2E`) with Electric Cyan accents (`#00E5FF`).
+- **Live Startup Indicators:**
+  - Dynamic `[ON]` / `[OFF]` badge in the menu item text.
+  - Custom anti-aliased Electric Cyan circular checkmark badge.
+  - Tray tooltip shows live status on hover (`Refresh Taskbar | Click to refresh | Startup: ON`).
+  - Self-healing startup path: automatically updates the registry run key if the executable was moved to a new folder.
 - **Persistent Tray State:** Listens for the Win32 `TaskbarCreated` message to automatically re-anchor its system tray icon across Explorer restarts.
-- **Single-Instance with IPC Broadcast:** Running `RefreshTaskbar.exe` while it is already in the tray broadcasts a registered Windows message to trigger an immediate refresh and exits in `<10ms`.
-- **Minimalist 2-Item Menu:** Right-click context menu features only `Open on startup` and `Close`.
-- **Tiny Footprint:** Single ~30 KB standalone native binary with zero runtime dependencies beyond standard Windows .NET.
+- **CLI & IPC Controls:**
+  - Double-clicking or running `RefreshTaskbar.exe` while it is already in the tray triggers an immediate refresh and exits in `<10ms`.
+  - Pass `--refresh` or `-r` to trigger a refresh from a shortcut or command line.
+  - Pass `--close` or `--stop` to cleanly close the running tray instance.
+- **Tiny Footprint:** Single ~32 KB standalone native binary with zero runtime dependencies beyond standard Windows .NET.
 
 ---
 
@@ -19,7 +27,8 @@ A lightweight, zero-dependency native Windows C# system tray utility that instan
 
 - **Left-Click Tray Icon:** Instantly force-refreshes the taskbar and desktop shell.
 - **Right-Click Tray Icon:**
-  - **Open on startup:** Toggle automatic launch with Windows (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`).
+  - **Refresh Taskbar:** Dedicated menu trigger for the force-refresh.
+  - **Open on startup:** Toggle automatic launch with Windows (`HKCU\Software\Microsoft\Windows\CurrentVersion\Run`) with live `[ON]` / `[OFF]` and checkmark indicators.
   - **Close:** Gracefully clean up handles and exit the utility.
 
 ---
@@ -44,8 +53,8 @@ C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /
 
 ```text
 Refresh Taskbar/
-├── RefreshTaskbar.cs       # Native C# source (Tray context, TaskbarCreated handler, ForceRefresh)
-├── RefreshTaskbar.exe      # 30 KB compiled standalone Windows binary
+├── RefreshTaskbar.cs       # Native C# source (Tray context, ModernMenuRenderer, IPC, ForceRefresh)
+├── RefreshTaskbar.exe      # ~32 KB compiled standalone Windows binary
 ├── refresh.ico             # High-res multi-resolution icon (16x16 to 256x256)
 ├── refresh.png             # 256x256 source PNG asset
 ├── make_icon.py            # Python generator for the custom modern icon

@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -12,7 +13,8 @@ namespace RefreshTaskbarApp
     internal static class Program
     {
         private const string MutexName = "RefreshTaskbar_SingleInstance_Mutex";
-        internal const string MsgName = "RefreshTaskbar_Trigger_Msg";
+        internal const string MsgTriggerName = "RefreshTaskbar_Trigger_Msg";
+        internal const string MsgCloseName = "RefreshTaskbar_Close_Msg";
 
         [DllImport("user32.dll")]
         private static extern bool SetProcessDPIAware();
@@ -28,14 +30,37 @@ namespace RefreshTaskbarApp
         {
             try { SetProcessDPIAware(); } catch { }
 
-            int wmTrigger = RegisterWindowMessage(MsgName);
+            int wmTrigger = RegisterWindowMessage(MsgTriggerName);
+            int wmClose = RegisterWindowMessage(MsgCloseName);
+
+            // Handle CLI flags
+            if (args != null && args.Length > 0)
+            {
+                string arg0 = args[0].ToLowerInvariant();
+                if (arg0 == "--close" || arg0 == "/close" || arg0 == "--stop" || arg0 == "/stop")
+                {
+                    if (wmClose != 0)
+                    {
+                        PostMessage((IntPtr)0xFFFF /* HWND_BROADCAST */, (uint)wmClose, IntPtr.Zero, IntPtr.Zero);
+                    }
+                    return;
+                }
+                if (arg0 == "--refresh" || arg0 == "/refresh" || arg0 == "-r")
+                {
+                    if (wmTrigger != 0)
+                    {
+                        PostMessage((IntPtr)0xFFFF /* HWND_BROADCAST */, (uint)wmTrigger, IntPtr.Zero, IntPtr.Zero);
+                    }
+                    return;
+                }
+            }
 
             bool createdNew;
             using (Mutex mutex = new Mutex(true, MutexName, out createdNew))
             {
                 if (!createdNew)
                 {
-                    // Already running: broadcast refresh trigger and exit immediately
+                    // Already running in background: trigger instant refresh and exit
                     if (wmTrigger != 0)
                     {
                         PostMessage((IntPtr)0xFFFF /* HWND_BROADCAST */, (uint)wmTrigger, IntPtr.Zero, IntPtr.Zero);
@@ -46,7 +71,7 @@ namespace RefreshTaskbarApp
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
 
-                using (RefreshTaskbarContext context = new RefreshTaskbarContext(wmTrigger))
+                using (RefreshTaskbarContext context = new RefreshTaskbarContext(wmTrigger, wmClose))
                 {
                     Application.Run(context);
                 }
@@ -61,6 +86,7 @@ namespace RefreshTaskbarApp
 
         private NotifyIcon _notifyIcon;
         private ContextMenuStrip _contextMenu;
+        private ToolStripMenuItem _itemRefresh;
         private ToolStripMenuItem _itemStartup;
         private ToolStripMenuItem _itemClose;
         private MessageWindow _messageWindow;
@@ -68,43 +94,68 @@ namespace RefreshTaskbarApp
         private static bool _isRefreshing = false;
         private static readonly object _refreshLock = new object();
 
-        public RefreshTaskbarContext(int wmTrigger)
+        public RefreshTaskbarContext(int wmTrigger, int wmClose)
         {
             InitializeTray();
 
             _messageWindow = new MessageWindow(
                 new Action(OnTaskbarCreated),
                 new Action(TriggerRefreshFromMessage),
-                wmTrigger
+                new Action(ExitApp),
+                wmTrigger,
+                wmClose
             );
         }
 
         private void InitializeTray()
         {
             _contextMenu = new ContextMenuStrip();
+            _contextMenu.Renderer = new ModernMenuRenderer();
             _contextMenu.ShowImageMargin = false;
+            _contextMenu.ShowCheckMargin = true;
+            _contextMenu.Font = new Font("Segoe UI", 9.0f, FontStyle.Regular);
 
-            _itemStartup = new ToolStripMenuItem("Open on startup");
+            // 1. Refresh Taskbar (Primary Action)
+            _itemRefresh = new ToolStripMenuItem("Refresh Taskbar");
+            _itemRefresh.Font = new Font("Segoe UI", 9.0f, FontStyle.Bold);
+            _itemRefresh.Click += delegate(object sender, EventArgs e)
+            {
+                ForceRefresh();
+            };
+
+            // 2. Open on Startup (Toggle with live indicator)
+            _itemStartup = new ToolStripMenuItem();
             _itemStartup.CheckOnClick = false;
-            _itemStartup.Checked = IsStartupEnabled();
+            UpdateStartupIndicator();
             _itemStartup.Click += delegate(object sender, EventArgs e)
             {
                 bool newState = !IsStartupEnabled();
                 SetStartupEnabled(newState);
-                _itemStartup.Checked = IsStartupEnabled();
+                UpdateStartupIndicator();
+                UpdateTrayTooltip();
             };
 
+            // 3. Close
             _itemClose = new ToolStripMenuItem("Close");
             _itemClose.Click += delegate(object sender, EventArgs e)
             {
                 ExitApp();
             };
 
+            // Build menu
+            _contextMenu.Items.Add(_itemRefresh);
+            _contextMenu.Items.Add(new ToolStripSeparator());
             _contextMenu.Items.Add(_itemStartup);
+            _contextMenu.Items.Add(new ToolStripSeparator());
             _contextMenu.Items.Add(_itemClose);
 
+            // Re-verify startup state dynamically whenever menu opens
+            _contextMenu.Opening += delegate(object sender, System.ComponentModel.CancelEventArgs e)
+            {
+                UpdateStartupIndicator();
+            };
+
             _notifyIcon = new NotifyIcon();
-            _notifyIcon.Text = "Refresh Taskbar";
             _notifyIcon.ContextMenuStrip = _contextMenu;
 
             Icon icon = LoadAppIcon();
@@ -117,6 +168,9 @@ namespace RefreshTaskbarApp
                 _notifyIcon.Icon = SystemIcons.Application;
             }
 
+            UpdateTrayTooltip();
+
+            // Left click triggers instant force refresh
             _notifyIcon.MouseClick += delegate(object sender, MouseEventArgs e)
             {
                 if (e.Button == MouseButtons.Left)
@@ -125,12 +179,38 @@ namespace RefreshTaskbarApp
                 }
             };
 
+            // Double click also triggers instant force refresh
             _notifyIcon.DoubleClick += delegate(object sender, EventArgs e)
             {
                 ForceRefresh();
             };
 
             _notifyIcon.Visible = true;
+        }
+
+        private void UpdateStartupIndicator()
+        {
+            bool enabled = IsStartupEnabled();
+            _itemStartup.Checked = enabled;
+            if (enabled)
+            {
+                _itemStartup.Text = "Open on startup    [ON]";
+                _itemStartup.ForeColor = Color.FromArgb(240, 240, 240);
+            }
+            else
+            {
+                _itemStartup.Text = "Open on startup    [OFF]";
+                _itemStartup.ForeColor = Color.FromArgb(170, 170, 170);
+            }
+        }
+
+        private void UpdateTrayTooltip()
+        {
+            if (_notifyIcon == null) return;
+            bool startup = IsStartupEnabled();
+            string status = startup ? "Startup: ON" : "Startup: OFF";
+            // Keep well under 63 character limit for NotifyIcon.Text
+            _notifyIcon.Text = string.Format("Refresh Taskbar\nClick to refresh | {0}", status);
         }
 
         private Icon LoadAppIcon()
@@ -233,7 +313,22 @@ namespace RefreshTaskbarApp
                 {
                     if (key == null) return false;
                     object val = key.GetValue(RunValueName);
-                    return val != null;
+                    if (val == null) return false;
+
+                    // Self-healing: if path changed, update to current location
+                    string currentPath = "\"" + Application.ExecutablePath + "\"";
+                    string storedPath = val.ToString();
+                    if (!string.Equals(storedPath, currentPath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        using (RegistryKey writeKey = Registry.CurrentUser.OpenSubKey(RunRegistryKey, true))
+                        {
+                            if (writeKey != null)
+                            {
+                                writeKey.SetValue(RunValueName, currentPath);
+                            }
+                        }
+                    }
+                    return true;
                 }
             }
             catch
@@ -290,18 +385,66 @@ namespace RefreshTaskbarApp
         }
     }
 
+    internal class ModernMenuRenderer : ToolStripProfessionalRenderer
+    {
+        public ModernMenuRenderer() : base(new ModernColorTable()) { }
+
+        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+        {
+            e.TextColor = e.Item.Selected ? Color.White : e.TextColor;
+            base.OnRenderItemText(e);
+        }
+
+        protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs e)
+        {
+            Rectangle r = new Rectangle(e.ImageRectangle.X + 2, e.ImageRectangle.Y + 2, 14, 14);
+            using (SolidBrush b = new SolidBrush(Color.FromArgb(0, 229, 255))) // Electric Cyan
+            using (Pen p = new Pen(Color.FromArgb(24, 24, 24), 2.0f))
+            {
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+                e.Graphics.FillEllipse(b, r);
+
+                Point[] checkPoints = new Point[] {
+                    new Point(r.X + 3, r.Y + 7),
+                    new Point(r.X + 6, r.Y + 10),
+                    new Point(r.X + 11, r.Y + 4)
+                };
+                e.Graphics.DrawLines(p, checkPoints);
+            }
+        }
+    }
+
+    internal class ModernColorTable : ProfessionalColorTable
+    {
+        public override Color ToolStripDropDownBackground { get { return Color.FromArgb(28, 28, 28); } }
+        public override Color MenuBorder { get { return Color.FromArgb(48, 48, 48); } }
+        public override Color MenuItemBorder { get { return Color.Transparent; } }
+        public override Color MenuItemSelected { get { return Color.FromArgb(46, 46, 46); } }
+        public override Color CheckBackground { get { return Color.Transparent; } }
+        public override Color CheckSelectedBackground { get { return Color.Transparent; } }
+        public override Color ImageMarginGradientBegin { get { return Color.FromArgb(28, 28, 28); } }
+        public override Color ImageMarginGradientMiddle { get { return Color.FromArgb(28, 28, 28); } }
+        public override Color ImageMarginGradientEnd { get { return Color.FromArgb(28, 28, 28); } }
+        public override Color SeparatorDark { get { return Color.FromArgb(48, 48, 48); } }
+        public override Color SeparatorLight { get { return Color.FromArgb(36, 36, 36); } }
+    }
+
     internal class MessageWindow : NativeWindow
     {
         private static readonly int WM_TASKBARCREATED = Program.RegisterWindowMessage("TaskbarCreated");
         private readonly Action _onTaskbarCreated;
         private readonly Action _onTriggerRefresh;
+        private readonly Action _onClose;
         private readonly int _wmTriggerRefresh;
+        private readonly int _wmClose;
 
-        public MessageWindow(Action onTaskbarCreated, Action onTriggerRefresh, int wmTriggerRefresh)
+        public MessageWindow(Action onTaskbarCreated, Action onTriggerRefresh, Action onClose, int wmTriggerRefresh, int wmClose)
         {
             _onTaskbarCreated = onTaskbarCreated;
             _onTriggerRefresh = onTriggerRefresh;
+            _onClose = onClose;
             _wmTriggerRefresh = wmTriggerRefresh;
+            _wmClose = wmClose;
 
             CreateParams cp = new CreateParams();
             cp.Parent = (IntPtr)(-3); // HWND_MESSAGE
@@ -312,17 +455,15 @@ namespace RefreshTaskbarApp
         {
             if (m.Msg == WM_TASKBARCREATED && WM_TASKBARCREATED != 0)
             {
-                if (_onTaskbarCreated != null)
-                {
-                    _onTaskbarCreated();
-                }
+                if (_onTaskbarCreated != null) _onTaskbarCreated();
             }
             else if (m.Msg == _wmTriggerRefresh && _wmTriggerRefresh != 0)
             {
-                if (_onTriggerRefresh != null)
-                {
-                    _onTriggerRefresh();
-                }
+                if (_onTriggerRefresh != null) _onTriggerRefresh();
+            }
+            else if (m.Msg == _wmClose && _wmClose != 0)
+            {
+                if (_onClose != null) _onClose();
             }
 
             base.WndProc(ref m);
